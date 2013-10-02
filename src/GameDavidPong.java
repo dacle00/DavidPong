@@ -1,10 +1,14 @@
 import java.applet.*;
 import java.util.*;
 import java.awt.*;
+import java.io.*;
+import java.net.URL;
 import java.awt.event.*;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.Rectangle2D;
 import java.awt.event.KeyListener;
+
+import javax.sound.sampled.*;
 
 
 public class GameDavidPong extends Applet implements Runnable, KeyListener
@@ -16,6 +20,8 @@ public class GameDavidPong extends Applet implements Runnable, KeyListener
 	//double buffering to avoid flickering images
 	Image 		dbImage;
 	Graphics 	dbGraphics;
+	final int	SCREENWIDTH  = 800;
+	final int	SCREENHEIGHT = 600;
 
 	Thread 		th = new Thread(this);
 	boolean 	gameRunning = false;
@@ -27,9 +33,11 @@ public class GameDavidPong extends Applet implements Runnable, KeyListener
 	Paddle		p1;
 	Paddle		p2;
 
+	final int	PADDINGTOP = 0;
+	final int   PADDINGBOTTOM = 0;
 	final int	POINTSTOWIN = 7;
 	final int	PADDLEDISTANCEFROMEDGE = 40;
-	final int	PADDLEALLOWEDHORIZONTALMOVEMENT = 60;
+	final int	PADDLEALLOWEDHORIZONTALMOVEMENT = 50;
 	final int	PADDLEWIDTH = 20;
 	final int	PADDLEHEIGHT = 80;
 	int			INITIALPADDLE1X;
@@ -53,17 +61,34 @@ public class GameDavidPong extends Applet implements Runnable, KeyListener
 	final int	P2Dn = 40;		// [DOWN]
 	final int	PAUSE = 32;		// [SPACE]
 	final int	DEBUG = 114;	// [F3]
-	final int	RESET = 0;		// [P]
+	final int	RESET = 80;		// [P]
 
+	//SOUND FILES
+	String BallHitEdge		= "/snd/BallHitsEdge.wav";
+	String BallHitPaddle	= "/snd/BallHitsPaddle.wav";
+	String BallScore		= "/snd/BallScore.wav";
+	
 	public void init()
 	{
-		if( !gameRunning ) addKeyListener(this);
+		if( !gameRunning ) 
+		{
+			//perform these steps on the first-game only, not subsequent games
+			addKeyListener(this);
 
+			//Sounds
+			initSound(BallHitEdge);
+			initSound(BallHitPaddle);
+			initSound(BallScore);
+		}
+
+		//TODO: now that i know where to set this in code, play with different screensizes and see what breaks!!  
+		this.setSize(SCREENWIDTH, SCREENHEIGHT);
+		
 		int winWidth = this.getSize().width;
-		int winHeight = this.getSize().height;
-
+		int winHeight = this.getSize().height;		
+		
 		gameRunning = true;
-		gamePaused = false;
+		gamePaused = true;
 		showDebug = false;
 
 		ballIsPaused = true;
@@ -75,24 +100,64 @@ public class GameDavidPong extends Applet implements Runnable, KeyListener
 		INITIALPADDLE2X = this.getSize().width - PADDLEDISTANCEFROMEDGE;
 		p1 = new Paddle(PADDLEWIDTH, PADDLEHEIGHT, INITIALPADDLE1X, winHeight/2, 6, 2, Color.magenta, P1Up, P1Dn, P1Lt, P1Rt);  //[W] and [A] keys
 		p2 = new Paddle(PADDLEWIDTH, PADDLEHEIGHT, INITIALPADDLE2X, winHeight/2, 6, 2, Color.orange, P2Up, P2Dn, P2Lt, P2Rt);   //[UP] and [DOWN] arrow keys
+				
 		
 	}
 
+	
+	public void openingSoundRandomness()
+	{
+		try
+		{
+			playSound(BallHitPaddle);
+			Thread.sleep(1000); 
+			playSound(BallHitPaddle);
+			Thread.sleep(300); 
+			playSound(BallHitEdge);
+			Thread.sleep(500); 
+			playSound(BallHitPaddle);
+			Thread.sleep(600); 
+			playSound(BallHitPaddle);
+			Thread.sleep(200); 
+			playSound(BallHitEdge);
+			Thread.sleep(200); 
+			playSound(BallHitPaddle);
+			Thread.sleep(100); 
+			playSound(BallHitEdge);
+			Thread.sleep(160); 
+			playSound(BallHitEdge);
+			Thread.sleep(100); 
+			playSound(BallScore);
+		}
+		catch(Exception e)
+		{ 
+			// ignore 
+		}
+	}
+	
+	public void main(String args[])
+	{
+		start();
+	}
+	
 	public void start()
 	{
 		th.start();
 	}
 
+	
 	public void stop()
 	{
 		gameRunning = false;
 	}
 
+	
 	public void destroy()
 	{
 		gameRunning = false;
 	}
 
+	
 	public void run()
 	{
 		int x_prev;
@@ -195,6 +260,13 @@ public class GameDavidPong extends Applet implements Runnable, KeyListener
 	//Draw each object to the screen once. The repaint() method will call this method
 	public void paint(Graphics g)
 	{
+		
+		//DRAW SCORE
+		g.setColor(Color.cyan);
+		g.setFont(new Font("monospaced", Font.BOLD, 56));
+		g.drawString(Integer.toString(p1.getScore()), (this.getSize().width/2)-120, 46);
+		g.drawString(Integer.toString(p2.getScore()), (this.getSize().width/2)+80, 46);		
+		
 		//draw ball
 		g.setColor(b.getColor());
 		g.fillOval(b.getX()-b.getRadius(),  b.getY()-b.getRadius(),  b.getRadius()*2,  b.getRadius()*2);
@@ -208,6 +280,45 @@ public class GameDavidPong extends Applet implements Runnable, KeyListener
 		g.fillRect(p2.getX()-(p2.getWidth()/2), p2.getY()-(p2.getHeight()/2), p2.getWidth(), p2.getHeight());
 		
 		//draw center dashed line
+		paint_centerDashedLine(g);
+		
+		//draw temp dot to show the actual SINGLE POINT of paddles
+		g.setColor(Color.white);  
+		g.fillOval(p1.getX(),  p1.getY(), 3, 3);
+		g.fillOval(p2.getX(),  p2.getY(), 3, 3);
+		
+		//DRAW PAUSE MENU
+		if( gamePaused )
+		{
+			int widthCenter = this.getSize().width/2;
+			int widthThird = this.getSize().width/3;
+			int heightThird = this.getSize().height/3;
+			
+			g.setColor(Color.darkGray);
+			g.fillRoundRect(widthThird, heightThird, widthThird, heightThird, 10, 10);
+			g.setColor(Color.cyan);
+			g.setFont(new Font("monospaced", Font.BOLD, 22));
+			g.drawString("P A U S E D", widthCenter - 72, heightThird + 30);
+			g.setFont(new Font("monospaced", Font.BOLD, 18));
+			g.drawString("Play Again - [P] key", widthCenter - 132, heightThird + 100);
+			g.drawString("Show Debug - [F3] key", widthCenter - 132, heightThird + 140);
+			g.drawString("Unpause    - [SPACE BAR]", widthCenter - 132, heightThird + 180);
+		}
+
+		//DRAW WINNING MENU
+		//winning conditions
+		if( p1.getScore()>=POINTSTOWIN || p2.getScore()>=POINTSTOWIN )
+		{
+			ballIsPaused = true;
+			ballPauseCountdown = MAXBALLPAUSE;
+			// draw end-game menu offer keys to quit and to play again.
+		}
+		
+	}
+
+
+	public void paint_centerDashedLine(Graphics g)
+	{
 		g.setColor(b.getColor());
 		int winHeight	= this.getSize().height;
 		int centerX		= this.getSize().width/2;
@@ -222,40 +333,6 @@ public class GameDavidPong extends Applet implements Runnable, KeyListener
 			dashHeight	= (winHeight/numDashes) - dashPad;
 			g.fillRect(centerX-(dashWidth/2), dashY, dashWidth, dashHeight);
 		}
-		
-		//draw temp dot to show the actual SINGLE POINT of paddles
-		g.setColor(Color.white);  
-		g.fillOval(p1.getX(),  p1.getY(), 3, 3);
-		g.setColor(Color.white);
-		g.fillOval(p2.getX(),  p2.getY(), 3, 3);
-		
-		//Draw Menu if Game is Paused
-		if( gamePaused )
-		{
-			int widthCenter = this.getSize().width/2;
-			int widthThird = this.getSize().width/3;
-			int heightThird = this.getSize().height/3;
-			
-			g.setColor(Color.DARK_GRAY);
-			g.fillRoundRect(widthThird, heightThird, widthThird, heightThird, 10, 10);
-			g.setColor(Color.cyan);
-			g.setFont(new Font("monospaced", Font.BOLD, 22));
-			g.drawString("P A U S E D", widthCenter - 72, heightThird + 30);
-			g.setFont(new Font("monospaced", Font.BOLD, 18));
-			g.drawString("Play Again - [P] key", widthCenter - 132, heightThird + 100);
-			g.drawString("Show Debug - [F3] key", widthCenter - 132, heightThird + 140);
-			g.drawString("Unpause    - [SPACE BAR]", widthCenter - 132, heightThird + 180);
-		}
-		
-		//winning conditions
-		if( p1.getScore()>=POINTSTOWIN || p2.getScore()>=POINTSTOWIN )
-		{
-			ballIsPaused = true;
-			ballPauseCountdown = MAXBALLPAUSE;
-			// draw end-game menu offer keys to quit and to play again.
-
-		}
-		
 	}
 	
 	
@@ -282,18 +359,20 @@ public class GameDavidPong extends Applet implements Runnable, KeyListener
 		}
 
 		//bounce ball off of top edge.
-		if( y < 0 )  
+		if( y < 0 + PADDINGTOP )  
 		{
+			playSound(BallHitEdge);
 			b.setySpeed(Math.abs(yspeed));
 			if(showDebug) System.out.println("Ball Hit Top at X:" + x + " + Y:" + y);
 		}
 		
 		//bounce ball off of bottom edge.
-		if( y > getSize().height ) 
+		if( y > getSize().height - PADDINGBOTTOM ) 
 		{
+			playSound(BallHitEdge);
 			b.setySpeed(-Math.abs(yspeed));
 			if(showDebug) System.out.println("Ball Hit Bottom at X:" + x + " + Y:" + y);
-		}
+		} 
 	}
 		
 	
@@ -312,6 +391,8 @@ public class GameDavidPong extends Applet implements Runnable, KeyListener
 			if(showDebug) System.out.println("Collision Check Left  X:" + x + " + Y:" + y);
 			if( CollisionCheck_PaddleX(p) )
 			{
+				
+				playSound(BallHitPaddle);
 				
 				//modify horizontal speed based on if Paddle was moving AWAY or TOWARDS ball.
 				if( p.getX()==p1.getX() )
@@ -342,8 +423,6 @@ public class GameDavidPong extends Applet implements Runnable, KeyListener
 							modifier = 1;
 							break;
 					}
-
-				
 				
 				if(showDebug) System.out.println("BALL COLLIDED WITH PADDLE1 X:" + x + " + Y:" + x);
 				//bounce the ball
@@ -351,13 +430,9 @@ public class GameDavidPong extends Applet implements Runnable, KeyListener
 					b.setxSpeed(Math.abs(xspeed)+modifier);
 				else
 					b.setxSpeed(-(Math.abs(xspeed)+modifier));
-
 				
 				//set vertical speed, based on where ball collided paddle
 				b.setySpeed((float)(.125 * yDif));
-				//b.setySpeed((float)0.0);
-				
-			
 			}
 		}
 	}
@@ -380,6 +455,8 @@ public class GameDavidPong extends Applet implements Runnable, KeyListener
 	
 	public void Score(String player)
 	{
+		playSound(BallScore);
+
 		ballIsPaused = true;
 		
 		if( player == "Player1" )
@@ -401,6 +478,37 @@ public class GameDavidPong extends Applet implements Runnable, KeyListener
 				winGame(p1);
 			else
 				winGame(p2);
+		}
+	}
+	
+	
+	public void playSound(String sound)
+	{
+		try {
+		     URL defaultSound = getClass().getResource(sound);
+		     File soundFile = new File(defaultSound.toURI());
+		     AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(defaultSound);
+		     Clip clip = AudioSystem.getClip();
+		     clip.open(audioInputStream);
+		     clip.start( );
+		} catch (Exception ex) {
+		     ex.printStackTrace();
+		}
+	}
+	
+	
+	public void initSound(String sound)
+	{
+		try {
+		     URL defaultSound = getClass().getResource(sound);
+		     File soundFile = new File(defaultSound.toURI());
+		     AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(defaultSound);
+		     Clip clip = AudioSystem.getClip();
+		     clip.open(audioInputStream);
+		     clip.start();
+		     clip.stop();
+		} catch (Exception ex) {
+		     ex.printStackTrace();
 		}
 	}
 	
@@ -434,7 +542,6 @@ public class GameDavidPong extends Applet implements Runnable, KeyListener
 		{
 			//p1 won
 			if(showDebug) System.out.println("!!!! P1 WON !!!!");
-
 		}
 		else if ( p.getX()==p2.getX() )
 		{
@@ -456,8 +563,8 @@ public class GameDavidPong extends Applet implements Runnable, KeyListener
 		//pause ball for MAXBALLPAUSE
 		ballIsPaused = true;
 		ballPauseCountdown = MAXBALLPAUSE;
-		
 	}
+	
 	
 	public Paddle CheckKeyboardInput(Paddle p)
 	{
@@ -554,10 +661,8 @@ public class GameDavidPong extends Applet implements Runnable, KeyListener
 			showDebug = !showDebug;
 
 		//RESET THE GAME
-		if (ke.getKeyCode() == RESET)
-		{
+		if (gamePaused && ke.getKeyCode() == RESET)
 			winGame(new Paddle());
-		}
 	}
 	
 	
@@ -589,6 +694,4 @@ public class GameDavidPong extends Applet implements Runnable, KeyListener
 		if (ke.getKeyCode() == p2.getRightKey() && p2.getXMoving()>0)
 			p2.setXMoving(0);
 	}
-
-
 }
