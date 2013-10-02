@@ -1,27 +1,32 @@
 import java.applet.*;
 import java.util.*;
 import java.awt.*;
-import java.io.*;
-import java.net.URL;
 import java.awt.event.*;
+import java.net.URL;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.Rectangle2D;
 import java.awt.event.KeyListener;
-
 import javax.sound.sampled.*;
 
 
 public class GameDavidPong extends Applet implements Runnable, KeyListener
 {
 
-
 	private static final long serialVersionUID = 1L;  //dunno what this is. the KeyListener made me do it.
 
 	//double buffering to avoid flickering images
 	Image 		dbImage;
 	Graphics 	dbGraphics;
-	final int	SCREENWIDTH  = 800;
-	final int	SCREENHEIGHT = 600;
+
+	int	WDTH			= 800;
+	int	HGHT			= 600;
+	
+	final int WDTHMIN	= 400;
+	final int HGHTMIN	= 300;
+
+	final int WDTHMAX	= 1200;
+	final int HGHTMAX	= 600;
+
 
 	Thread 		th = new Thread(this);
 	boolean 	gameRunning = false;
@@ -74,37 +79,58 @@ public class GameDavidPong extends Applet implements Runnable, KeyListener
 		{
 			//perform these steps on the first-game only, not subsequent games
 			addKeyListener(this);
+			addComponentListener(new ComponentListener() {
+				public void componentShown(ComponentEvent e) { }
+				public void componentMoved(ComponentEvent e) { }
+				public void componentHidden(ComponentEvent e) { }
+				public void componentResized(ComponentEvent e)
+				{ 
+					gamePaused = true;
+					
+					WDTH = e.getComponent().getWidth();
+					HGHT = e.getComponent().getHeight();
+					if (showDebug) System.out.println("WDTH:" + WDTH + " HGHT:" + HGHT);
+
+					//these 2 lines seemed necessary for viewable section of applet to resize
+					dbImage = createImage(WDTH, HGHT);
+					dbGraphics = dbImage.getGraphics();
+					
+					//TODO:  if deciding not to restart game... need ability to copy in current SCORE, (Coordinate percentage due to resize)
+					b = new Ball(INITIALBALLRADIUS, WDTH/2, HGHT/2, INITIALBALLXSPEED, INITIALBALLYSPEED, BALLXSPEEDMAX, BALLXSPEEDMIN, Color.cyan);
+					INITIALPADDLE1X = PADDLEDISTANCEFROMEDGE;
+					INITIALPADDLE2X = WDTH - PADDLEDISTANCEFROMEDGE;
+					p1 = new Paddle(PADDLEWIDTH, PADDLEHEIGHT, INITIALPADDLE1X, HGHT/2, 6, 2, Color.magenta, P1Up, P1Dn, P1Lt, P1Rt);  //[W] and [A] keys
+					p2 = new Paddle(PADDLEWIDTH, PADDLEHEIGHT, INITIALPADDLE2X, HGHT/2, 6, 2, Color.orange, P2Up, P2Dn, P2Lt, P2Rt);   //[UP] and [DOWN] arrow keys
+				}
+			});
 
 			//Sounds
 			initSound(BallHitEdge);
 			initSound(BallHitPaddle);
 			initSound(BallScore);
+			
+			//Window Sizes.
+			this.setSize(new Dimension(WDTH, HGHT));
+			this.setMinimumSize(new Dimension(WDTHMIN, HGHTMIN));  //TOOD:  doesn't seem to restrict allowed window size
+			this.setMaximumSize(new Dimension(WDTHMAX, HGHTMAX));  //TOOD:  doesn't seem to restrict allowed window size
 		}
 
-		//TODO: now that i know where to set this in code, play with different screensizes and see what breaks!!  
-		this.setSize(SCREENWIDTH, SCREENHEIGHT);
-		
-		int winWidth = this.getSize().width;
-		int winHeight = this.getSize().height;		
-		
 		gameRunning = true;
 		gamePaused = true;
 		showDebug = false;
 
 		ballIsPaused = true;
 		ballPauseCountdown = MAXBALLPAUSE;
-		b = new Ball(INITIALBALLRADIUS, winWidth/2, winHeight/2, INITIALBALLXSPEED, INITIALBALLYSPEED, BALLXSPEEDMAX, BALLXSPEEDMIN, Color.cyan);
+		b = new Ball(INITIALBALLRADIUS, WDTH/2, HGHT/2, INITIALBALLXSPEED, INITIALBALLYSPEED, BALLXSPEEDMAX, BALLXSPEEDMIN, Color.cyan);
 
 		//Paddles
 		INITIALPADDLE1X = PADDLEDISTANCEFROMEDGE;
-		INITIALPADDLE2X = this.getSize().width - PADDLEDISTANCEFROMEDGE;
-		p1 = new Paddle(PADDLEWIDTH, PADDLEHEIGHT, INITIALPADDLE1X, winHeight/2, 6, 2, Color.magenta, P1Up, P1Dn, P1Lt, P1Rt);  //[W] and [A] keys
-		p2 = new Paddle(PADDLEWIDTH, PADDLEHEIGHT, INITIALPADDLE2X, winHeight/2, 6, 2, Color.orange, P2Up, P2Dn, P2Lt, P2Rt);   //[UP] and [DOWN] arrow keys
-				
-		
+		INITIALPADDLE2X = WDTH - PADDLEDISTANCEFROMEDGE;
+		p1 = new Paddle(PADDLEWIDTH, PADDLEHEIGHT, INITIALPADDLE1X, HGHT/2, 6, 2, Color.magenta, P1Up, P1Dn, P1Lt, P1Rt);  //[W] and [A] keys
+		p2 = new Paddle(PADDLEWIDTH, PADDLEHEIGHT, INITIALPADDLE2X, HGHT/2, 6, 2, Color.orange, P2Up, P2Dn, P2Lt, P2Rt);   //[UP] and [DOWN] arrow keys
 	}
 
-	
+	 
 	public void openingSoundRandomness()
 	{
 		try
@@ -134,11 +160,7 @@ public class GameDavidPong extends Applet implements Runnable, KeyListener
 			// ignore 
 		}
 	}
-	
-	public void main(String args[])
-	{
-		start();
-	}
+
 	
 	public void start()
 	{
@@ -185,7 +207,7 @@ public class GameDavidPong extends Applet implements Runnable, KeyListener
 				}
 				else
 				{
-					if( ballPauseCountdown--==0 )
+					if( ballPauseCountdown--<=0 )
 					{
 						ballPauseCountdown = MAXBALLPAUSE;
 						ballIsPaused = false;
@@ -210,10 +232,12 @@ public class GameDavidPong extends Applet implements Runnable, KeyListener
 				//============================
 				if(showDebug)
 				{
+					/*
 					System.out.println("Ball    X:"+b.getX()+" Y:"+b.getY()+ " RADIUS:"+b.getRadius());
 					System.out.println("Paddle1 X:"+p1.getX()+" Y:"+p1.getY()+ " WIDTH:"+p1.getWidth()+" HEIGHT:"+p1.getHeight());
 					System.out.println("Paddle2 X:"+INITIALPADDLE2X+" Y:"+p2.getY()+ " WIDTH:"+p2.getWidth()+" HEIGHT:"+p2.getHeight());
 					System.out.println("Scores: " + p1.getScore() + " to " + p2.getScore());
+					*/
 				}
 			}
 			else
@@ -244,12 +268,12 @@ public class GameDavidPong extends Applet implements Runnable, KeyListener
 		//Initial Drawing
 		if(dbImage == null)
 		{
-			dbImage = createImage(this.getSize().width, this.getSize().height);
+			dbImage = createImage(WDTH, HGHT);
 			dbGraphics = dbImage.getGraphics();
 		}		
 
 		dbGraphics.setColor(Color.black);
-		dbGraphics.fillRect(0, 0,  this.getSize().width, this.getSize().height);
+		dbGraphics.fillRect(0, 0,  WDTH, HGHT);
 		dbGraphics.setColor(this.getForeground());
 		paint(dbGraphics);
 
@@ -260,12 +284,14 @@ public class GameDavidPong extends Applet implements Runnable, KeyListener
 	//Draw each object to the screen once. The repaint() method will call this method
 	public void paint(Graphics g)
 	{
-		
+		g.setColor(Color.black);
+		g.fillRect(0, 0,  WDTH, HGHT);
+
 		//DRAW SCORE
 		g.setColor(Color.cyan);
 		g.setFont(new Font("monospaced", Font.BOLD, 56));
-		g.drawString(Integer.toString(p1.getScore()), (this.getSize().width/2)-120, 46);
-		g.drawString(Integer.toString(p2.getScore()), (this.getSize().width/2)+80, 46);		
+		g.drawString(Integer.toString(p1.getScore()), (WDTH/2)-120, 46);
+		g.drawString(Integer.toString(p2.getScore()), (WDTH/2)+80, 46);		
 		
 		//draw ball
 		g.setColor(b.getColor());
@@ -290,9 +316,9 @@ public class GameDavidPong extends Applet implements Runnable, KeyListener
 		//DRAW PAUSE MENU
 		if( gamePaused )
 		{
-			int widthCenter = this.getSize().width/2;
-			int widthThird = this.getSize().width/3;
-			int heightThird = this.getSize().height/3;
+			int widthCenter = WDTH/2;
+			int widthThird = WDTH/3;
+			int heightThird = HGHT/3;
 			
 			g.setColor(Color.darkGray);
 			g.fillRoundRect(widthThird, heightThird, widthThird, heightThird, 10, 10);
@@ -320,8 +346,8 @@ public class GameDavidPong extends Applet implements Runnable, KeyListener
 	public void paint_centerDashedLine(Graphics g)
 	{
 		g.setColor(b.getColor());
-		int winHeight	= this.getSize().height;
-		int centerX		= this.getSize().width/2;
+		int winHeight	= HGHT;
+		int centerX		= WDTH/2;
 		int dashY		= 0; 
 		int dashWidth	= p1.getWidth() /2;
 		int numDashes	= 10;
@@ -426,7 +452,7 @@ public class GameDavidPong extends Applet implements Runnable, KeyListener
 				
 				if(showDebug) System.out.println("BALL COLLIDED WITH PADDLE1 X:" + x + " + Y:" + x);
 				//bounce the ball
-				if(x<this.getSize().width/2)
+				if(x<WDTH/2)
 					b.setxSpeed(Math.abs(xspeed)+modifier);
 				else
 					b.setxSpeed(-(Math.abs(xspeed)+modifier));
@@ -486,7 +512,6 @@ public class GameDavidPong extends Applet implements Runnable, KeyListener
 	{
 		try {
 		     URL defaultSound = getClass().getResource(sound);
-		     File soundFile = new File(defaultSound.toURI());
 		     AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(defaultSound);
 		     Clip clip = AudioSystem.getClip();
 		     clip.open(audioInputStream);
@@ -501,7 +526,6 @@ public class GameDavidPong extends Applet implements Runnable, KeyListener
 	{
 		try {
 		     URL defaultSound = getClass().getResource(sound);
-		     File soundFile = new File(defaultSound.toURI());
 		     AudioInputStream audioInputStream = AudioSystem.getAudioInputStream(defaultSound);
 		     Clip clip = AudioSystem.getClip();
 		     clip.open(audioInputStream);
@@ -516,8 +540,8 @@ public class GameDavidPong extends Applet implements Runnable, KeyListener
 	public void resetAfterScore()
 	{
 		//reset ball position and speed
-		b.setX(this.getSize().width/2);
-		b.setY(this.getSize().height/2);
+		b.setX(WDTH/2);
+		b.setY(HGHT/2);
 		b.setxSpeed(INITIALBALLXSPEED);
 		b.setySpeed(INITIALBALLYSPEED);
 		int xspeed = b.getxSpeed();
@@ -581,7 +605,7 @@ public class GameDavidPong extends Applet implements Runnable, KeyListener
 			//moving UP
 			p.setY( py-pyspeed );
 		}
-		else if ( p.getYMoving()<0 && p.getY()<this.getSize().height-p.getHeight()/2 )
+		else if ( p.getYMoving()<0 && p.getY()<HGHT-p.getHeight()/2 )
 		{
 			//moving DOWN
 			p.setY( py+pyspeed );
